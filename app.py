@@ -1,27 +1,40 @@
 import streamlit as st
+import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+from PIL import Image
 from engine import generate_fleet_data, apply_risk_logic
 
-# 1. Page Configuration
-st.set_page_config(page_title="ACG Fleet Insight – Lite", layout="wide", page_icon="✈️")
+# 1. Page Configuration (MUST be the first Streamlit command)
+st.set_page_config(
+    page_title="ACG Fleet Insight – Lite", 
+    layout="wide", 
+    page_icon="✈️"
+)
 
-# 2. Data Initialization (Persistence via Session State)
+# 2. Branded Sidebar Logo
+try:
+    logo = Image.open("acg_logo.jpg")
+    # Using use_column_width for compatibility with your Streamlit version
+    st.sidebar.image(logo, use_column_width=True)
+except Exception as e:
+    st.sidebar.warning("Logo file 'acg_logo.jpg' not found on GitHub.")
+
+# 3. Data Initialization (Persistence via Session State)
 if 'fleet_df' not in st.session_state:
     raw_data = generate_fleet_data()
     st.session_state.fleet_df = apply_risk_logic(raw_data)
 
-# 3. Sidebar - Global Controls
+# 4. Sidebar - Global Controls
 st.sidebar.title("✈️ ACG Fleet Insight")
 st.sidebar.markdown("---")
 
 role = st.sidebar.selectbox("Select User Role", ["Executive", "Operations", "Finance"])
 
-# New Feature: Financial Sensitivity Slider
+# Settings
 st.sidebar.subheader("Settings")
 cost_per_point = st.sidebar.slider("Delay Cost Multiplier ($)", 100, 1000, 500)
 
-# Apply the slider impact to a copy of the dataframe for display
+# Apply the slider impact to a copy for display
 df = st.session_state.fleet_df.copy()
 df['Financial_Exposure'] = (df['Risk_Score'] * cost_per_point).round(0)
 
@@ -30,7 +43,7 @@ if st.sidebar.button("🔄 Reset Fleet Data"):
     st.session_state.clear()
     st.rerun()
 
-# 4. Role-Based Logic
+# 5. Role-Based Logic
 if role == "Operations":
     st.header("🔧 Technical Operations Dashboard")
     
@@ -49,7 +62,6 @@ if role == "Operations":
     with st.expander("Log Maintenance Activity"):
         selected_tail = st.selectbox("Select Tail Number to Clear Faults", df['Tail_Number'])
         if st.button("Perform Maintenance"):
-            # Update the master data in session_state
             st.session_state.fleet_df.loc[st.session_state.fleet_df['Tail_Number'] == selected_tail, 'Technical_Faults'] = 0
             st.session_state.fleet_df.loc[st.session_state.fleet_df['Tail_Number'] == selected_tail, 'Days_Since_Check'] = 0
             st.session_state.fleet_df = apply_risk_logic(st.session_state.fleet_df)
@@ -87,9 +99,10 @@ else: # Executive View
     st.markdown("---")
     st.subheader("🌐 Global Fleet Health Heatmap")
     fig_heat = px.treemap(df, 
-                         path=['Model', 'Tail_Number'], 
-                         values='Risk_Score',
-                         color='Risk_Score', 
-                         color_continuous_scale='RdYlGn_r',
-                         title="Fleet Risk Distribution")
+                          path=['Model', 'Tail_Number'], 
+                          values='Risk_Score',
+                          color='Risk_Score', 
+                          color_continuous_scale='RdYlGn_r',
+                          title="Fleet Risk Distribution")
+
     st.plotly_chart(fig_heat, use_container_width=True)
