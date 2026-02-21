@@ -13,11 +13,11 @@ st.set_page_config(
 
 # 2. Branded Sidebar Logo
 try:
-    logo = Image.open("acg_logo.jpeg")
+    logo = Image.open("acg_logo.png")
     # Using use_column_width for compatibility with your Streamlit version
     st.sidebar.image(logo, use_column_width=True)
 except Exception as e:
-    st.sidebar.warning("Logo file 'acg_logo.jpg' not found on GitHub.")
+    st.sidebar.warning("Logo file 'acg_logo.png' not found on GitHub.")
 
 # 3. Data Initialization (Persistence via Session State)
 if 'fleet_df' not in st.session_state:
@@ -106,4 +106,5 @@ else: # Executive View
                           title="Fleet Risk Distribution")
 
     st.plotly_chart(fig_heat, use_container_width=True)
+
 
