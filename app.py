@@ -4,107 +4,70 @@ import plotly.express as px
 from PIL import Image
 from engine import generate_fleet_data, apply_risk_logic
 
-# 1. Page Configuration (MUST be the first Streamlit command)
-st.set_page_config(
-    page_title="ACG Fleet Insight – Lite", 
-    layout="wide", 
-    page_icon="✈️"
-)
+# 1. Page Config
+st.set_page_config(page_title="ACG Fleet Manager Pro", layout="wide", page_icon="✈️")
 
-# 2. Branded Sidebar Logo
+# 2. Logo Handling
 try:
-    logo = Image.open("acg_logo.png")
-    # Using use_column_width for compatibility with your Streamlit version
+    logo = Image.open("acg_logo.jpg")
     st.sidebar.image(logo, use_column_width=True)
-except Exception as e:
-    st.sidebar.warning("Logo file 'acg_logo.png' not found on GitHub.")
+except:
+    st.sidebar.info("Upload 'acg_logo.jpg' to GitHub to see your branding.")
 
-# 3. Data Initialization (Persistence via Session State)
+# 3. Enhanced Data Initialization
+# We add new columns for the details you want to track
 if 'fleet_df' not in st.session_state:
-    raw_data = generate_fleet_data()
-    st.session_state.fleet_df = apply_risk_logic(raw_data)
+    df = apply_risk_logic(generate_fleet_data())
+    # Initialize new columns with default values
+    df['Last_Crew'] = "Unassigned"
+    df['Fuel_Used_KG'] = 0
+    df['Expenses_$'] = 0
+    df['Revenue_$'] = 0
+    df['Next_Departure'] = "TBD"
+    df['Profit_$'] = 0
+    st.session_state.fleet_df = df
 
-# 4. Sidebar - Global Controls
-st.sidebar.title("✈️ ACG Fleet Insight")
-st.sidebar.markdown("---")
+df = st.session_state.fleet_df
 
-role = st.sidebar.selectbox("Select User Role", ["Executive", "Operations", "Finance"])
+# 4. Sidebar Navigation
+st.sidebar.title("🎮 Command Center")
+page = st.sidebar.radio("Go to:", ["Global Fleet Dashboard", "Log Flight & Expenses", "Aircraft Deep Dive"])
 
-# Settings
-st.sidebar.subheader("Settings")
-cost_per_point = st.sidebar.slider("Delay Cost Multiplier ($)", 100, 1000, 500)
-
-# Apply the slider impact to a copy for display
-df = st.session_state.fleet_df.copy()
-df['Financial_Exposure'] = (df['Risk_Score'] * cost_per_point).round(0)
-
-st.sidebar.markdown("---")
-if st.sidebar.button("🔄 Reset Fleet Data"):
-    st.session_state.clear()
-    st.rerun()
-
-# 5. Role-Based Logic
-if role == "Operations":
-    st.header("🔧 Technical Operations Dashboard")
+# --- PAGE 1: GLOBAL DASHBOARD ---
+if page == "Global Fleet Dashboard":
+    st.header("📊 Global Fleet Health & Profitability")
     
-    # Priority Alerts
-    st.subheader("⚠️ Maintenance Priority Alerts")
-    critical_planes = df[df['Risk_Score'] > 60]
-    if not critical_planes.empty:
-        for _, row in critical_planes.iterrows():
-            st.error(f"**ALERT:** {row['Tail_Number']} - Risk Score: {row['Risk_Score']} | Check Required.")
-    else:
-        st.success("All systems green. No critical alerts.")
+    # Top Level Metrics
+    c1, c2, c3, c4 = st.columns(4)
+    total_profit = df['Profit_$'].sum()
+    c1.metric("Total Fleet Profit", f"${total_profit:,.2f}")
+    c2.metric("Avg Risk Score", f"{df['Risk_Score'].mean():.1f}")
+    c3.metric("Total Fuel Burn (KG)", f"{df['Fuel_Used_KG'].sum():,.0f}")
+    c4.metric("Active Tails", len(df))
 
-    # Maintenance Action Interaction
-    st.markdown("---")
-    st.subheader("🛠️ Maintenance Action")
-    with st.expander("Log Maintenance Activity"):
-        selected_tail = st.selectbox("Select Tail Number to Clear Faults", df['Tail_Number'])
-        if st.button("Perform Maintenance"):
-            st.session_state.fleet_df.loc[st.session_state.fleet_df['Tail_Number'] == selected_tail, 'Technical_Faults'] = 0
-            st.session_state.fleet_df.loc[st.session_state.fleet_df['Tail_Number'] == selected_tail, 'Days_Since_Check'] = 0
-            st.session_state.fleet_df = apply_risk_logic(st.session_state.fleet_df)
-            st.balloons()
-            st.success(f"Maintenance logged for {selected_tail}. Risk reset!")
-            st.rerun()
+    st.subheader("Financial Performance by Aircraft")
+    fig = px.bar(df, x="Tail_Number", y="Profit_$", color="Risk_Score", 
+                 title="Profitability per Tail (Color = Risk Level)",
+                 color_continuous_scale='RdYlGn_r')
+    st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Fleet Technical Status")
-    st.dataframe(df[['Tail_Number', 'Model', 'Flight_Hours', 'Technical_Faults', 'Risk_Score']], use_container_width=True)
-
-elif role == "Finance":
-    st.header("💰 Financial Impact & Exposure")
+# --- PAGE 2: DATA ENTRY ---
+elif page == "Log Flight & Expenses":
+    st.header("📝 Daily Operations Log")
+    st.info("Input the details of the most recent flight here to update the fleet records.")
     
-    total_exposure = df['Financial_Exposure'].sum()
-    st.metric("Total Fleet Risk Exposure", f"${total_exposure:,.0f}", help="Calculated based on Risk Score * Multiplier")
-    
-    st.subheader("💵 Risk-to-Cost Exposure Analysis")
-    fig_finance = px.scatter(df, 
-                             x="Risk_Score", 
-                             y="Financial_Exposure",
-                             size="Flight_Hours", 
-                             color="Model",
-                             hover_name="Tail_Number",
-                             title="Financial Exposure vs. Technical Risk Score")
-    st.plotly_chart(fig_finance, use_container_width=True)
-
-else: # Executive View
-    st.header("📊 Executive Fleet Health Overview")
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Avg Fleet Risk", f"{df['Risk_Score'].mean():.1f}")
-    col2.metric("Highest Risk Tail", df.loc[df['Risk_Score'].idxmax(), 'Tail_Number'])
-    col3.metric("Projected Loss (Fleet)", f"${df['Financial_Exposure'].sum():,.0f}")
-
-    st.markdown("---")
-    st.subheader("🌐 Global Fleet Health Heatmap")
-    fig_heat = px.treemap(df, 
-                          path=['Model', 'Tail_Number'], 
-                          values='Risk_Score',
-                          color='Risk_Score', 
-                          color_continuous_scale='RdYlGn_r',
-                          title="Fleet Risk Distribution")
-
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-
+    with st.form("entry_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            target_tail = st.selectbox("Select Aircraft", df['Tail_Number'])
+            crew = st.text_input("Crew Members", placeholder="e.g. Capt. Smith, FO Jones")
+            fuel = st.number_input("Fuel Consumed (KG)", min_value=0)
+        with col2:
+            rev = st.number_input("Flight Revenue ($)", min_value=0)
+            exp = st.number_input("Other Expenses ($)", min_value=0)
+            dest = st.text_input("Next Destination", placeholder="e.g. LHR, JFK, DXB")
+        
+        if st.form_submit_button("Update Aircraft Records"):
+            # Update the specific row in Session State
+            idx = df.index[df['Tail_Number'] == target_tail][0]
+            st.session_
