@@ -13,7 +13,7 @@ st.set_page_config(
 
 # 2. Branded Sidebar Logo
 try:
-    logo = Image.open("acg_logo.jpg")
+    logo = Image.open("acg_logo.jpeg")
     # Using use_column_width for compatibility with your Streamlit version
     st.sidebar.image(logo, use_column_width=True)
 except Exception as e:
@@ -106,3 +106,4 @@ else: # Executive View
                           title="Fleet Risk Distribution")
 
     st.plotly_chart(fig_heat, use_container_width=True)
+
