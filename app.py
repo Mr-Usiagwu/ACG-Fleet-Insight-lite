@@ -1,73 +1,101 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from PIL import Image
-from engine import generate_fleet_data, apply_risk_logic
+from datetime import datetime, timedelta
 
-# 1. Page Config
-st.set_page_config(page_title="ACG Fleet Manager Pro", layout="wide", page_icon="✈️")
+# 1. SETUP & BRANDING
+st.set_page_config(page_title="ACG ERP | Fleet Manager", layout="wide", page_icon="✈️")
 
-# 2. Logo Handling
-try:
-    logo = Image.open("acg_logo.jpg")
-    st.sidebar.image(logo, use_column_width=True)
-except:
-    st.sidebar.info("Upload 'acg_logo.jpg' to GitHub to see your branding.")
+# Simulated Database (In a real ERP, this would be a Google Sheet)
+if 'erp_data' not in st.session_state:
+    st.session_state.erp_data = pd.DataFrame(columns=[
+        'Date', 'Tail_Number', 'Crew', 'Origin', 'Destination', 
+        'Passengers', 'Revenue', 'Expenses', 'Profit', 'Type'
+    ])
 
-# 3. Enhanced Data Initialization
-# We add new columns for the details you want to track
-if 'fleet_df' not in st.session_state:
-    df = apply_risk_logic(generate_fleet_data())
-    # Initialize new columns with default values
-    df['Last_Crew'] = "Unassigned"
-    df['Fuel_Used_KG'] = 0
-    df['Expenses_$'] = 0
-    df['Revenue_$'] = 0
-    df['Next_Departure'] = "TBD"
-    df['Profit_$'] = 0
-    st.session_state.fleet_df = df
+# 2. AUTOMATION LOGIC (The "Math" Engine)
+def calculate_flight_finances(pax, dist_category):
+    # Assume $250 avg ticket price
+    rev = pax * 250 
+    # Categorize expenses based on flight length
+    costs = {"Short Haul": 5000, "Medium Haul": 12000, "Long Haul": 25000}
+    exp = costs.get(dist_category, 10000) + (pax * 15) # Add $15 per head for catering/taxes
+    return rev, exp
 
-df = st.session_state.fleet_df
+# 3. SIDEBAR NAVIGATION
+st.sidebar.title("✈️ ACG ERP System")
+menu = st.sidebar.radio("Command Menu", ["Dashboard", "Log New Flight", "Fleet Timeline", "Maintenance Log"])
 
-# 4. Sidebar Navigation
-st.sidebar.title("🎮 Command Center")
-page = st.sidebar.radio("Go to:", ["Global Fleet Dashboard", "Log Flight & Expenses", "Aircraft Deep Dive"])
-
-# --- PAGE 1: GLOBAL DASHBOARD ---
-if page == "Global Fleet Dashboard":
-    st.header("📊 Global Fleet Health & Profitability")
+# --- PAGE 1: SMART DASHBOARD ---
+if menu == "Dashboard":
+    st.title("📊 Fleet Performance Intelligence")
     
-    # Top Level Metrics
-    c1, c2, c3, c4 = st.columns(4)
-    total_profit = df['Profit_$'].sum()
-    c1.metric("Total Fleet Profit", f"${total_profit:,.2f}")
-    c2.metric("Avg Risk Score", f"{df['Risk_Score'].mean():.1f}")
-    c3.metric("Total Fuel Burn (KG)", f"{df['Fuel_Used_KG'].sum():,.0f}")
-    c4.metric("Active Tails", len(df))
+    if st.session_state.erp_data.empty:
+        st.info("Your logbook is empty. Go to 'Log New Flight' to start your ERP data.")
+    else:
+        df = st.session_state.erp_data
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Revenue", f"${df['Revenue'].sum():,.2f}")
+        c2.metric("Total Expenses", f"${df['Expenses'].sum():,.2f}")
+        c3.metric("Net Profit", f"${df['Profit'].sum():,.2f}", delta=f"{df['Profit'].mean():,.2f} avg/flight")
 
-    st.subheader("Financial Performance by Aircraft")
-    fig = px.bar(df, x="Tail_Number", y="Profit_$", color="Risk_Score", 
-                 title="Profitability per Tail (Color = Risk Level)",
-                 color_continuous_scale='RdYlGn_r')
-    st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Profitability by Aircraft")
+        fig = px.bar(df, x="Tail_Number", y="Profit", color="Destination", barmode="group",
+                     title="Earnings per Tail Number")
+        st.plotly_chart(fig, use_container_width=True)
 
-# --- PAGE 2: DATA ENTRY ---
-elif page == "Log Flight & Expenses":
-    st.header("📝 Daily Operations Log")
-    st.info("Input the details of the most recent flight here to update the fleet records.")
+# --- PAGE 2: LOG NEW FLIGHT (THE INPUT) ---
+elif menu == "Log New Flight":
+    st.title("📝 Operations Input")
+    st.subheader("Enter flight details - The ERP will calculate financials automatically.")
     
-    with st.form("entry_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            target_tail = st.selectbox("Select Aircraft", df['Tail_Number'])
-            crew = st.text_input("Crew Members", placeholder="e.g. Capt. Smith, FO Jones")
-            fuel = st.number_input("Fuel Consumed (KG)", min_value=0)
-        with col2:
-            rev = st.number_input("Flight Revenue ($)", min_value=0)
-            exp = st.number_input("Other Expenses ($)", min_value=0)
-            dest = st.text_input("Next Destination", placeholder="e.g. LHR, JFK, DXB")
+    with st.form("flight_form", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            date = st.date_input("Flight Date", datetime.now())
+            tail = st.selectbox("Aircraft Tail", ["ACG-101", "ACG-102", "ACG-103", "ACG-104"])
+            crew = st.text_input("Crew Names", placeholder="Capt. Smith / FO Jones")
+        with c2:
+            dist = st.selectbox("Route Type", ["Short Haul", "Medium Haul", "Long Haul"])
+            pax = st.number_input("Passenger Count", min_value=1, max_value=300, value=150)
+            route = st.text_input("Route (e.g. LHR - JFK)")
+
+        if st.form_submit_button("Finalize & Post to Ledger"):
+            rev, exp = calculate_flight_finances(pax, dist)
+            new_entry = {
+                'Date': date, 'Tail_Number': tail, 'Crew': crew, 
+                'Origin': route.split('-')[0] if '-' in route else "Unknown",
+                'Destination': route.split('-')[1] if '-' in route else route,
+                'Passengers': pax, 'Revenue': rev, 'Expenses': exp, 
+                'Profit': rev - exp, 'Type': 'Flight'
+            }
+            st.session_state.erp_data = pd.concat([st.session_state.erp_data, pd.DataFrame([new_entry])], ignore_index=True)
+            st.success(f"Flight Logged! Profit Generated: ${rev-exp:,.2f}")
+            st.balloons()
+
+# --- PAGE 3: FLEET TIMELINE ---
+elif menu == "Fleet Timeline":
+    st.title("📅 30-Day Operations Timeline")
+    
+    if st.session_state.erp_data.empty:
+        st.warning("No flight history found.")
+    else:
+        df = st.session_state.erp_data
+        # Gantt-style chart for the month
+        fig = px.timeline(df, x_start="Date", x_end="Date", y="Tail_Number", color="Profit",
+                          hover_data=["Crew", "Passengers", "Destination"],
+                          title="Monthly Fleet Schedule & Earnings")
+        st.plotly_chart(fig, use_container_width=True)
         
-        if st.form_submit_button("Update Aircraft Records"):
-            # Update the specific row in Session State
-            idx = df.index[df['Tail_Number'] == target_tail][0]
-            st.session_
+        st.subheader("Full Ledger (Consise Report)")
+        st.dataframe(df[['Date', 'Tail_Number', 'Crew', 'Destination', 'Profit']], use_container_width=True)
+
+# --- PAGE 4: MAINTENANCE LOG ---
+elif menu == "Maintenance Log":
+    st.title("🔧 Maintenance Schedule")
+    st.write("Next Mandatory Checks based on 30-day cycle:")
+    
+    # Simple automated logic for next check
+    for aircraft in ["ACG-101", "ACG-102", "ACG-103", "ACG-104"]:
+        next_date = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+        st.write(f"✈️ **{aircraft}**: Next A-Check scheduled for **{next_date}**")
